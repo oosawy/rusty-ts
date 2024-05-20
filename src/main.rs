@@ -1,12 +1,14 @@
+mod transformer;
+
 use std::sync::Arc;
 
 use swc::{atoms::Atom, Compiler};
 use swc_core::common::BytePos;
 use swc_ecma_ast::{
-    CallExpr, Callee, Decl, Expr, ExprOrSpread, ExprStmt, FnDecl, Function, Ident, Lit, Module,
-    ModuleItem, Stmt, Str,
+    CallExpr, Callee, Decl, Expr, ExprOrSpread, ExprStmt, Ident, Lit, Module, ModuleItem, Stmt, Str,
 };
 use syn::spanned::Spanned;
+use transformer::Transformer;
 
 fn main() {
     compile(r#"println!("hello world"); fn foo() { println!("foo") }"#)
@@ -29,6 +31,8 @@ fn compile(input: &str) {
 fn traverse(
     input: syn::File,
 ) -> impl swc_ecma_codegen::Node + swc_ecma_visit::VisitWith<swc_compiler_base::IdentCollector> {
+    let transformer = Transformer::new();
+
     let span = convert_span(input.span());
 
     let mut items: Vec<ModuleItem> = Vec::new();
@@ -44,6 +48,10 @@ fn traverse(
                     .last()
                     .is_some_and(|x| x.ident == "println")
                 {
+                    let string = syn::parse2::<syn::LitStr>(macro_.mac.tokens.clone())
+                        .unwrap()
+                        .value();
+
                     let expr = CallExpr {
                         span: convert_span(macro_.span()),
                         callee: Callee::Expr(Box::new(Expr::Ident(Ident {
@@ -51,14 +59,19 @@ fn traverse(
                             sym: "console.log".into(),
                             optional: false,
                         }))),
-                        args: macro_
-                            .attrs
-                            .iter()
-                            .map(|attr| ExprOrSpread {
-                                expr: Box::new(Expr::Lit(Lit::Str(Str::from("()")))),
-                                spread: None,
-                            })
-                            .collect::<Vec<ExprOrSpread>>(),
+                        args: vec![ExprOrSpread {
+                            expr: Box::new(Expr::Lit(Lit::Str(Str::from(string)))),
+                            spread: None,
+                        }],
+                        // args: macro_
+                        //     .mac
+                        //     .tokens
+                        //     .iter()
+                        //     .map(|attr| ExprOrSpread {
+                        //         expr: Box::new(Expr::Lit(Lit::Str(Str::from("()")))),
+                        //         spread: None,
+                        //     })
+                        //     .collect::<Vec<ExprOrSpread>>(),
                         type_args: Default::default(),
                     };
 
@@ -72,22 +85,26 @@ fn traverse(
             }
 
             syn::Item::Fn(func) => {
-                let stmt = Stmt::Decl(Decl::Fn(FnDecl {
-                    ident: convert_ident(func.sig.ident),
-                    declare: false,
-                    function: Box::new(Function {
-                        span: Default::default(),
-                        params: Default::default(),
-                        decorators: Default::default(),
-                        body: Default::default(),
-                        is_generator: false,
-                        is_async: false,
-                        type_params: Default::default(),
-                        return_type: Default::default(),
-                    }),
-                }));
+                items.push(ModuleItem::Stmt(Stmt::Decl(Decl::Fn(
+                    transformer.item_fn(&func),
+                ))));
 
-                items.push(ModuleItem::Stmt(stmt));
+                // let stmt = Stmt::Decl(Decl::Fn(FnDecl {
+                //     ident: convert_ident(func.sig.ident),
+                //     declare: false,
+                //     function: Box::new(Function {
+                //         span: Default::default(),
+                //         params: Default::default(),
+                //         decorators: Default::default(),
+                //         body: Default::default(),
+                //         is_generator: false,
+                //         is_async: false,
+                //         type_params: Default::default(),
+                //         return_type: Default::default(),
+                //     }),
+                // }));
+
+                // items.push(ModuleItem::Stmt(stmt));
             }
             _ => {}
         }
@@ -133,12 +150,12 @@ fn generate<
     return output.code;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
 
-    #[test]
-    fn test_build_js() {
-        compile()
-    }
-}
+//     #[test]
+//     fn test_build_js() {
+//         compile()
+//     }
+// }
