@@ -1,0 +1,11 @@
+[package]
+name = "rusty-ts"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+swc = "0.275.1"
+swc_ecma_ast = "0.113.4"
+swc_ecma_codegen = "0.149.1"
